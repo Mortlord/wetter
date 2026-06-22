@@ -56,6 +56,42 @@ const dayName = (iso) => {
   return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
 };
 
+// HH from ISO time, local
+const hourLabel = (iso) => {
+  const d = new Date(iso);
+  return d.getHours().toString().padStart(2, "0");
+};
+
+// HH:MM from ISO, for sunrise/sunset
+const clock = (iso) => {
+  const d = new Date(iso);
+  return `${d.getHours().toString().padStart(2, "0")}:${d
+    .getMinutes()
+    .toString()
+    .padStart(2, "0")}`;
+};
+
+// next 12 hourly slots starting from the current hour
+const nextHours = (hourly, count = 12) => {
+  if (!hourly || !hourly.time) return [];
+  const now = Date.now();
+  const out = [];
+  for (let i = 0; i < hourly.time.length && out.length < count; i++) {
+    const t = new Date(hourly.time[i]).getTime();
+    if (t >= now - 3600 * 1000) {
+      out.push({
+        time: hourly.time[i],
+        temp: hourly.temperature_2m[i],
+        pop: hourly.precipitation_probability
+          ? hourly.precipitation_probability[i]
+          : null,
+        code: hourly.weather_code[i],
+      });
+    }
+  }
+  return out;
+};
+
 export default function WeatherDashboard() {
   const [favorites, setFavorites] = useState(() => {
     try {
@@ -122,8 +158,9 @@ export default function WeatherDashboard() {
     const wUrl =
       "https://api.open-meteo.com/v1/forecast" +
       `?latitude=${place.lat}&longitude=${place.lon}` +
-      "&current=temperature_2m,wind_speed_10m,precipitation,weather_code,uv_index" +
-      "&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_sum,uv_index_max" +
+      "&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,precipitation,weather_code,uv_index" +
+      "&hourly=temperature_2m,precipitation_probability,weather_code" +
+      "&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_sum,uv_index_max,sunrise,sunset" +
       "&timezone=auto&forecast_days=3";
 
     const tasks = [fetch(wUrl).then((r) => r.json())];
@@ -276,13 +313,23 @@ export default function WeatherDashboard() {
                   <span style={S.deg}>°</span>
                 </div>
                 <div style={S.cond}>{wx(cur.weather_code).t}</div>
+                {cur.apparent_temperature != null && (
+                  <div style={S.feels}>
+                    Feels like {Math.round(cur.apparent_temperature)}°
+                  </div>
+                )}
               </div>
             </div>
 
             {/* core metrics */}
             <div style={S.metrics}>
-              <Metric label="Wind" value={`${Math.round(cur.wind_speed_10m)} km/h`} />
-              <Metric label="Precip." value={`${cur.precipitation ?? 0} mm`} />
+              <Metric label="Wind" value={`${Math.round(cur.wind_speed_10m)}`} sub="km/h" />
+              <Metric label="Precip." value={`${cur.precipitation ?? 0}`} sub="mm" />
+              <Metric
+                label="Humidity"
+                value={cur.relative_humidity_2m != null ? `${cur.relative_humidity_2m}` : "–"}
+                sub="%"
+              />
               <Metric
                 label="UV"
                 value={cur.uv_index != null ? cur.uv_index.toFixed(1) : "–"}
@@ -290,6 +337,25 @@ export default function WeatherDashboard() {
                 color={uv.c}
               />
             </div>
+
+            {/* hourly preview for today */}
+            {data?.hourly && (
+              <div style={S.hourlyWrap}>
+                <div style={S.sectionHead}>Next hours</div>
+                <div style={S.hourly}>
+                  {nextHours(data.hourly, 12).map((h) => (
+                    <div key={h.time} style={S.hour}>
+                      <div style={S.hourTime}>{hourLabel(h.time)}</div>
+                      <div style={S.hourIcon}>{wx(h.code).i}</div>
+                      <div style={S.hourTemp}>{Math.round(h.temp)}°</div>
+                      <div style={S.hourPop}>
+                        {h.pop != null && h.pop > 0 ? `${h.pop}%` : ""}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* 3-day trend */}
             {daily && (
@@ -309,6 +375,21 @@ export default function WeatherDashboard() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+            {/* sunrise / sunset for today */}
+            {daily?.sunrise && daily?.sunset && (
+              <div style={S.sun}>
+                <div style={S.sunItem}>
+                  <span style={S.sunIcon}>🌅</span>
+                  <span style={S.sunLabel}>Sunrise</span>
+                  <span style={S.sunTime}>{clock(daily.sunrise[0])}</span>
+                </div>
+                <div style={S.sunItem}>
+                  <span style={S.sunIcon}>🌇</span>
+                  <span style={S.sunLabel}>Sunset</span>
+                  <span style={S.sunTime}>{clock(daily.sunset[0])}</span>
+                </div>
               </div>
             )}
           </>
@@ -420,14 +501,27 @@ const S = {
   temp: { fontSize: 72, fontWeight: 200, lineHeight: 1, letterSpacing: "-.03em" },
   deg: { fontWeight: 200 },
   cond: { fontSize: 16, color: "#c7ccd4", marginTop: 2 },
-  metrics: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 20 },
+  feels: { fontSize: 13, color: "#8a8f98", marginTop: 2 },
+  metrics: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 20 },
   metric: {
     background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)",
-    borderRadius: 16, padding: "14px 12px",
+    borderRadius: 14, padding: "12px 8px",
   },
-  metricLabel: { fontSize: 12, color: "#8a8f98", textTransform: "uppercase", letterSpacing: ".06em" },
-  metricValue: { fontSize: 22, fontWeight: 500, marginTop: 6 },
+  metricLabel: { fontSize: 10.5, color: "#8a8f98", textTransform: "uppercase", letterSpacing: ".04em" },
+  metricValue: { fontSize: 20, fontWeight: 500, marginTop: 5 },
   metricSub: { fontSize: 12, marginTop: 2 },
+  sectionHead: { fontSize: 11, color: "#8a8f98", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 },
+  hourlyWrap: { marginBottom: 20 },
+  hourly: { display: "flex", gap: 4, overflowX: "auto", paddingBottom: 4 },
+  hour: {
+    flex: "0 0 auto", display: "flex", flexDirection: "column", alignItems: "center",
+    gap: 4, padding: "8px 6px", borderRadius: 12, background: "rgba(255,255,255,.03)",
+    minWidth: 46,
+  },
+  hourTime: { fontSize: 11, color: "#8a8f98" },
+  hourIcon: { fontSize: 18 },
+  hourTemp: { fontSize: 14, fontWeight: 600 },
+  hourPop: { fontSize: 10.5, color: "#7dd3fc", minHeight: 13 },
   forecast: { display: "flex", flexDirection: "column", gap: 2, marginBottom: 24 },
   fday: {
     display: "grid", gridTemplateColumns: "48px 40px 1fr auto", alignItems: "center",
@@ -439,6 +533,16 @@ const S = {
   fmax: { fontSize: 17, fontWeight: 600 },
   fmin: { fontSize: 15, color: "#8a8f98" },
   fdayRain: { fontSize: 12.5, color: "#7dd3fc", textAlign: "right" },
+  sun: {
+    display: "flex", gap: 10, marginBottom: 24,
+  },
+  sunItem: {
+    flex: 1, display: "flex", alignItems: "center", gap: 8,
+    padding: "12px 14px", borderRadius: 14, background: "rgba(255,255,255,.03)",
+  },
+  sunIcon: { fontSize: 20 },
+  sunLabel: { fontSize: 13, color: "#8a8f98", flex: 1 },
+  sunTime: { fontSize: 15, fontWeight: 600 },
   manage: {
     borderTop: "1px solid rgba(255,255,255,.08)", paddingTop: 16,
   },
