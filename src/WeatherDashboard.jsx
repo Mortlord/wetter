@@ -1,59 +1,59 @@
 import React, { useState, useEffect, useCallback } from "react";
 
 /*
-  Minimal-Wetter-Dashboard (PWA)
-  Datenquellen:
-    - Open-Meteo  -> Wetterdaten weltweit (kein API-Key)
-    - Brightsky   -> amtliche DWD-Warnungen (nur fuer DE-Standorte sinnvoll)
+  Minimal weather dashboard (PWA)
+  Data sources:
+    - Open-Meteo  -> weather worldwide (no API key)
+    - Brightsky   -> official DWD warnings (only meaningful for DE locations)
 
-  Deploy-Hinweis:
-    - Geolocation, Service Worker und "Zum Homescreen" brauchen HTTPS.
-    - Favoriten werden in localStorage gehalten (im Artifact-Preview nicht aktiv).
+  Deploy notes:
+    - Geolocation, service worker and "Add to Home Screen" need HTTPS.
+    - Favorites are stored in localStorage.
 */
 
 const WEATHER = {
-  0:  { t: "Klar",                 i: "\u2600\uFE0F" },
-  1:  { t: "Ueberwiegend klar",    i: "\uD83C\uDF24\uFE0F" },
-  2:  { t: "Teils bewoelkt",       i: "\u26C5" },
-  3:  { t: "Bedeckt",              i: "\u2601\uFE0F" },
-  45: { t: "Nebel",                i: "\uD83C\uDF2B\uFE0F" },
-  48: { t: "Reifnebel",            i: "\uD83C\uDF2B\uFE0F" },
-  51: { t: "Leichter Niesel",      i: "\uD83C\uDF26\uFE0F" },
-  53: { t: "Niesel",               i: "\uD83C\uDF26\uFE0F" },
-  55: { t: "Starker Niesel",       i: "\uD83C\uDF26\uFE0F" },
-  61: { t: "Leichter Regen",       i: "\uD83C\uDF27\uFE0F" },
-  63: { t: "Regen",                i: "\uD83C\uDF27\uFE0F" },
-  65: { t: "Starker Regen",        i: "\uD83C\uDF27\uFE0F" },
-  71: { t: "Leichter Schnee",      i: "\uD83C\uDF28\uFE0F" },
-  73: { t: "Schnee",               i: "\uD83C\uDF28\uFE0F" },
-  75: { t: "Starker Schnee",       i: "\uD83C\uDF28\uFE0F" },
-  80: { t: "Schauer",              i: "\uD83C\uDF26\uFE0F" },
-  81: { t: "Starke Schauer",       i: "\uD83C\uDF27\uFE0F" },
-  82: { t: "Heftige Schauer",      i: "\u26C8\uFE0F" },
-  95: { t: "Gewitter",             i: "\u26C8\uFE0F" },
-  96: { t: "Gewitter, Hagel",      i: "\u26C8\uFE0F" },
-  99: { t: "Schweres Gewitter",    i: "\u26C8\uFE0F" },
+  0:  { t: "Clear",               i: "☀️" },
+  1:  { t: "Mostly clear",        i: "🌤️" },
+  2:  { t: "Partly cloudy",       i: "⛅" },
+  3:  { t: "Overcast",            i: "☁️" },
+  45: { t: "Fog",                 i: "🌫️" },
+  48: { t: "Rime fog",            i: "🌫️" },
+  51: { t: "Light drizzle",       i: "🌦️" },
+  53: { t: "Drizzle",             i: "🌦️" },
+  55: { t: "Heavy drizzle",       i: "🌦️" },
+  61: { t: "Light rain",          i: "🌧️" },
+  63: { t: "Rain",                i: "🌧️" },
+  65: { t: "Heavy rain",          i: "🌧️" },
+  71: { t: "Light snow",          i: "🌨️" },
+  73: { t: "Snow",                i: "🌨️" },
+  75: { t: "Heavy snow",          i: "🌨️" },
+  80: { t: "Showers",             i: "🌦️" },
+  81: { t: "Heavy showers",       i: "🌧️" },
+  82: { t: "Violent showers",     i: "⛈️" },
+  95: { t: "Thunderstorm",        i: "⛈️" },
+  96: { t: "Thunderstorm, hail",  i: "⛈️" },
+  99: { t: "Severe thunderstorm", i: "⛈️" },
 };
-const wx = (code) => WEATHER[code] || { t: "Unbekannt", i: "\u2754" };
+const wx = (code) => WEATHER[code] || { t: "Unknown", i: "❔" };
 
 const DEFAULT_FAVORITES = [
-  { id: "fr",  name: "Freiburg",        lat: 47.996, lon: 7.849,  de: true  },
-  { id: "ber", name: "Berlin",          lat: 52.520, lon: 13.405, de: true  },
-  { id: "sgn", name: "Ho-Chi-Minh-St.", lat: 10.823, lon: 106.630, de: false },
+  { id: "fr",  name: "Freiburg",     lat: 47.996, lon: 7.849,   de: true  },
+  { id: "ber", name: "Berlin",       lat: 52.520, lon: 13.405,  de: true  },
+  { id: "sgn", name: "Ho Chi Minh",  lat: 10.823, lon: 106.630, de: false },
 ];
 
 const uvLabel = (uv) => {
-  if (uv == null) return { t: "\u2013", c: "#8a8f98" };
-  if (uv < 3)  return { t: "niedrig",      c: "#4ade80" };
-  if (uv < 6)  return { t: "mittel",       c: "#facc15" };
-  if (uv < 8)  return { t: "hoch",         c: "#fb923c" };
-  if (uv < 11) return { t: "sehr hoch",    c: "#f87171" };
-  return { t: "extrem", c: "#c084fc" };
+  if (uv == null) return { t: "–", c: "#8a8f98" };
+  if (uv < 3)  return { t: "low",       c: "#4ade80" };
+  if (uv < 6)  return { t: "moderate",  c: "#facc15" };
+  if (uv < 8)  return { t: "high",      c: "#fb923c" };
+  if (uv < 11) return { t: "very high", c: "#f87171" };
+  return { t: "extreme", c: "#c084fc" };
 };
 
 const dayName = (iso) => {
   const d = new Date(iso);
-  return ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"][d.getDay()];
+  return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
 };
 
 export default function WeatherDashboard() {
@@ -65,7 +65,7 @@ export default function WeatherDashboard() {
       return DEFAULT_FAVORITES;
     }
   });
-  const [active, setActive] = useState(null); // null = aktueller Standort
+  const [active, setActive] = useState(null); // null = current location
   const [geo, setGeo] = useState(null);
   const [data, setData] = useState(null);
   const [alerts, setAlerts] = useState([]);
@@ -75,22 +75,22 @@ export default function WeatherDashboard() {
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
 
-  // Favoriten persistieren
+  // persist favorites
   useEffect(() => {
     try {
       window.localStorage.setItem("wx_favorites", JSON.stringify(favorites));
-    } catch { /* Artifact-Preview: kein localStorage */ }
+    } catch { /* ignore */ }
   }, [favorites]);
 
   const place = active
     ? favorites.find((f) => f.id === active)
     : geo
-    ? { name: geo.name || "Aktueller Standort", lat: geo.lat, lon: geo.lon, de: geo.de }
+    ? { name: geo.name || "Current location", lat: geo.lat, lon: geo.lon, de: geo.de }
     : null;
 
   const askLocation = useCallback(() => {
     if (!navigator.geolocation) {
-      setErrMsg("Geolocation wird vom Browser nicht unterstuetzt.");
+      setErrMsg("Geolocation is not supported by this browser.");
       setStatus("error");
       return;
     }
@@ -99,20 +99,20 @@ export default function WeatherDashboard() {
       (pos) => {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
-        // grobe DE-Bounding-Box fuer Warnungs-Logik
+        // rough DE bounding box for warning logic
         const de = lat > 47.2 && lat < 55.1 && lon > 5.8 && lon < 15.1;
         setGeo({ lat, lon, de });
         setActive(null);
       },
       (err) => {
-        setErrMsg("Standort nicht verfuegbar: " + err.message);
+        setErrMsg("Location unavailable: " + err.message);
         setStatus("error");
       },
       { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 }
     );
   }, []);
 
-  // Wetter + Warnungen laden, sobald ein Ort feststeht
+  // load weather + warnings once a place is set
   useEffect(() => {
     if (!place) return;
     let cancelled = false;
@@ -141,14 +141,14 @@ export default function WeatherDashboard() {
         setData(w);
         const list =
           a && Array.isArray(a.alerts)
-            ? a.alerts.filter((x) => x.event_de || x.headline_de || x.headline)
+            ? a.alerts.filter((x) => x.event_en || x.headline_en || x.event_de || x.headline)
             : [];
         setAlerts(list);
         setStatus("idle");
       })
       .catch(() => {
         if (cancelled) return;
-        setErrMsg("Wetterdaten konnten nicht geladen werden.");
+        setErrMsg("Could not load weather data.");
         setStatus("error");
       });
 
@@ -157,7 +157,7 @@ export default function WeatherDashboard() {
     };
   }, [place?.lat, place?.lon, place?.de]);
 
-  // Erststart: Standort anfragen
+  // first start: ask for location
   useEffect(() => {
     askLocation();
   }, [askLocation]);
@@ -172,7 +172,7 @@ export default function WeatherDashboard() {
     }
     setSearching(true);
     fetch(
-      "https://geocoding-api.open-meteo.com/v1/search?count=5&language=de&name=" +
+      "https://geocoding-api.open-meteo.com/v1/search?count=5&language=en&name=" +
         encodeURIComponent(q.trim())
     )
       .then((r) => r.json())
@@ -214,13 +214,13 @@ export default function WeatherDashboard() {
       <style>{KEYFRAMES}</style>
       <div style={S.shell}>
 
-        {/* Kopf: Ortswahl */}
+        {/* location tabs */}
         <div style={S.tabs}>
           <button
             onClick={askLocation}
             style={{ ...S.tab, ...(active === null ? S.tabActive : {}) }}
           >
-            \u2316 Standort
+            ⌖ Location
           </button>
           {favorites.map((f) => (
             <button
@@ -233,7 +233,7 @@ export default function WeatherDashboard() {
           ))}
         </div>
 
-        {/* Warnungen zuerst */}
+        {/* warnings first */}
         {place?.de && alerts.length > 0 && (
           <div style={S.alertWrap}>
             {alerts.slice(0, 3).map((a, idx) => (
@@ -241,11 +241,13 @@ export default function WeatherDashboard() {
                 <span style={S.alertDot} />
                 <div>
                   <div style={S.alertTitle}>
-                    {a.event_de || a.headline_de || a.headline}
+                    {a.event_en || a.headline_en || a.event_de || a.headline}
                   </div>
-                  {(a.description_de || a.instruction_de) && (
+                  {(a.description_en || a.instruction_en ||
+                    a.description_de || a.instruction_de) && (
                     <div style={S.alertBody}>
-                      {a.description_de || a.instruction_de}
+                      {a.description_en || a.instruction_en ||
+                        a.description_de || a.instruction_de}
                     </div>
                   )}
                 </div>
@@ -255,14 +257,14 @@ export default function WeatherDashboard() {
         )}
         {place && !place.de && (
           <div style={S.noAlert}>
-            Keine amtlichen Warnungen ausserhalb Deutschlands verfuegbar.
+            No official warnings available outside Germany.
           </div>
         )}
 
-        {status === "loading" && <div style={S.muted}>Lade \u2026</div>}
+        {status === "loading" && <div style={S.muted}>Loading …</div>}
         {status === "error" && <div style={S.errBox}>{errMsg}</div>}
 
-        {/* Aktueller Block */}
+        {/* current block */}
         {cur && place && (
           <>
             <div style={S.hero}>
@@ -271,39 +273,39 @@ export default function WeatherDashboard() {
                 <div style={S.place}>{place.name}</div>
                 <div style={S.temp}>
                   {Math.round(cur.temperature_2m)}
-                  <span style={S.deg}>\u00B0</span>
+                  <span style={S.deg}>°</span>
                 </div>
                 <div style={S.cond}>{wx(cur.weather_code).t}</div>
               </div>
             </div>
 
-            {/* Kernwerte */}
+            {/* core metrics */}
             <div style={S.metrics}>
               <Metric label="Wind" value={`${Math.round(cur.wind_speed_10m)} km/h`} />
-              <Metric label="Niederschlag" value={`${cur.precipitation ?? 0} mm`} />
+              <Metric label="Precip." value={`${cur.precipitation ?? 0} mm`} />
               <Metric
                 label="UV"
-                value={cur.uv_index != null ? cur.uv_index.toFixed(1) : "\u2013"}
+                value={cur.uv_index != null ? cur.uv_index.toFixed(1) : "–"}
                 sub={uv.t}
                 color={uv.c}
               />
             </div>
 
-            {/* 3-Tage-Trend */}
+            {/* 3-day trend */}
             {daily && (
               <div style={S.forecast}>
                 {daily.time.map((t, i) => (
                   <div key={t} style={S.fday}>
-                    <div style={S.fdayName}>{i === 0 ? "Heute" : dayName(t)}</div>
+                    <div style={S.fdayName}>{i === 0 ? "Today" : dayName(t)}</div>
                     <div style={S.fdayIcon}>{wx(daily.weather_code[i]).i}</div>
                     <div style={S.fdayTemp}>
-                      <span style={S.fmax}>{Math.round(daily.temperature_2m_max[i])}\u00B0</span>
-                      <span style={S.fmin}>{Math.round(daily.temperature_2m_min[i])}\u00B0</span>
+                      <span style={S.fmax}>{Math.round(daily.temperature_2m_max[i])}°</span>
+                      <span style={S.fmin}>{Math.round(daily.temperature_2m_min[i])}°</span>
                     </div>
                     <div style={S.fdayRain}>
                       {daily.precipitation_sum[i] > 0
-                        ? `\uD83D\uDCA7 ${daily.precipitation_sum[i].toFixed(1)} mm`
-                        : "\u2013"}
+                        ? `💧 ${daily.precipitation_sum[i].toFixed(1)} mm`
+                        : "–"}
                     </div>
                   </div>
                 ))}
@@ -312,16 +314,16 @@ export default function WeatherDashboard() {
           </>
         )}
 
-        {/* Favoriten verwalten */}
+        {/* manage favorites */}
         <div style={S.manage}>
-          <div style={S.manageHead}>Ort hinzufuegen</div>
+          <div style={S.manageHead}>Add location</div>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Stadt suchen \u2026"
+            placeholder="Search city …"
             style={S.search}
           />
-          {searching && <div style={S.muted}>Suche \u2026</div>}
+          {searching && <div style={S.muted}>Searching …</div>}
           {results.length > 0 && (
             <div style={S.results}>
               {results.map((r) => (
@@ -342,15 +344,15 @@ export default function WeatherDashboard() {
 
           {favorites.length > 0 && (
             <>
-              <div style={{ ...S.manageHead, marginTop: 16 }}>Favoriten</div>
+              <div style={{ ...S.manageHead, marginTop: 16 }}>Favorites</div>
               {favorites.map((f) => (
                 <div key={f.id} style={S.manageRow}>
                   <span>
                     {f.name}
-                    {f.de ? "" : "  (kein Warndienst)"}
+                    {f.de ? "" : "  (no warning service)"}
                   </span>
                   <button style={S.remove} onClick={() => removeFavorite(f.id)}>
-                    entfernen
+                    remove
                   </button>
                 </div>
               ))}
