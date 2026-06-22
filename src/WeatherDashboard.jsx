@@ -385,7 +385,7 @@ const S = {
     background: "radial-gradient(120% 100% at 50% 0%, #1b2735 0%, #0b0f14 60%)",
     color: "#f5f5f7",
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif",
-    padding: "20px 16px 40px",
+    padding: "calc(env(safe-area-inset-top, 0px) + 20px) 16px 40px",
     display: "flex",
     justifyContent: "center",
   },
